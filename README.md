@@ -579,7 +579,7 @@ kube_pod_info{namespace=~"prod-.*"}
 
 **Quick Test - Verify KSM Dashboards Work:**
 
-1. **Access Grafana**: https://amgforaks-a8bmc4hxhcbpgfbn.eus2.grafana.azure.com
+1. **Access Grafana**: https://your-grafana-instance.region.grafana.azure.com
 2. **Go to Explore** → Enter this query:
    ```promql
    kube_pod_info{namespace=~"prod-.*"}
@@ -752,7 +752,7 @@ This dashboard strategy ensures you have **immediate visibility** into your Kube
 #### Quick Start: Verify Your Setup
 
 ##### 1. Access Your Grafana Instance
-Your Grafana URL: https://amgforaks-a8bmc4hxhcbpgfbn.eus2.grafana.azure.com
+Your Grafana URL: https://your-grafana-instance.region.grafana.azure.com
 
 ##### 2. Test KSM Metrics (Available Immediately)
 ```promql
