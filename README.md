@@ -29,6 +29,8 @@ The following Azure resources are required for complete AKS observability:
 
 ## Monitoring Data Types
 
+---
+
 ### Activity Logs
 
 Activity logs provide audit trail information for AKS cluster management operations.
@@ -36,6 +38,8 @@ Activity logs provide audit trail information for AKS cluster management operati
 **Documentation:**
 - https://learn.microsoft.com/en-us/azure/aks/monitor-aks-reference#activity-log  
 - https://learn.microsoft.com/en-us/azure/role-based-access-control/permissions/containers#microsoftcontainerservice  
+
+---
 
 ### Platform Metrics
 
@@ -48,6 +52,8 @@ Platform metrics provide performance and health information about the AKS cluste
 **Baseline Metrics:**
 Refer AMBA for baseline metrics to monitor and alert   
 https://azure.github.io/azure-monitor-baseline-alerts/services/ContainerService/managedClusters/  
+
+---
 
 ### Resource Logs - Logs from Control Plane  
 
@@ -64,6 +70,8 @@ AKSControlPlane
 | where Category == "kube-apiserver"
 ```
 
+---
+
 ### Syslog - Syslog from worker nodes   
 
 Syslog provides system-level logs from worker nodes.
@@ -72,6 +80,8 @@ Syslog provides system-level logs from worker nodes.
 ```bash
 az aks create -g <clusterResourceGroup> -n <clusterName> --enable-managed-identity --node-count 1 --enable-addons monitoring --data-collection-settings dataCollectionSettings.json --generate-ssh-keys  
 ```
+
+---
 
 ### Container Insights - Logs from pod stdout/stderr
 
@@ -118,6 +128,8 @@ az aks show --resource-group keda-rg --name keda-training-aks
 
 In portal, check log analytics workspace for logs: 
 table: ContainerLogV2   
+
+---
 
 ### Azure Monitor Workspace - Metrics from workloads 
 
@@ -465,6 +477,8 @@ application_uptime_seconds{namespace=~"prod-.*"}
 This approach ensures you get **comprehensive Kubernetes monitoring** immediately, with the option to add **application-specific metrics** as needed.
 
 #### AMW configurations 
+
+---
 
 ### Azure Managed Grafana
 
