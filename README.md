@@ -49,9 +49,10 @@ Platform metrics provide performance and health information about the AKS cluste
 Refer AMBA for baseline metrics to monitor and alert   
 https://azure.github.io/azure-monitor-baseline-alerts/services/ContainerService/managedClusters/  
 
-### Resource Logs
+### Resource Logs - Logs from Control Plane  
 
-Resource logs capture information from the AKS control plane components.
+Resource logs capture information from the AKS control plane components.  
+Enable with 'Diagnostic Settings'  
 
 **Documentation:**
 - https://learn.microsoft.com/en-us/azure/aks/monitor-aks?tabs=cilium#aks-control-plane-resource-logs  
@@ -63,7 +64,7 @@ AKSControlPlane
 | where Category == "kube-apiserver"
 ```
 
-### Syslog
+### Syslog - Syslog from worker nodes   
 
 Syslog provides system-level logs from worker nodes.
 
@@ -72,13 +73,13 @@ Syslog provides system-level logs from worker nodes.
 az aks create -g <clusterResourceGroup> -n <clusterName> --enable-managed-identity --node-count 1 --enable-addons monitoring --data-collection-settings dataCollectionSettings.json --generate-ssh-keys  
 ```
 
-## Container Insights Configuration
+### Container Insights - Logs from pod stdout/stderr
 
 Container Insights provides logs from pod stdout/stderr.
 
 > **Important**: Container Insights collect metric data in addition to logs. This must be disabled when AMW is used for metrics collection.
 
-### Enabling Container Insights
+#### Enabling Container Insights
 
 Container Insights uses AMA agent for log collection.
 
@@ -92,7 +93,7 @@ az aks enable-addons \
   --workspace-resource-id $lawrid
 ```
 
-### Verification Commands
+#### Verification Commands
 
 ```bash
 kubectl get ds ama-logs --namespace=kube-system
@@ -118,11 +119,11 @@ az aks show --resource-group keda-rg --name keda-training-aks
 In portal, check log analytics workspace for logs: 
 table: ContainerLogV2   
 
-## Azure Monitor Workspace Configuration
+### Azure Monitor Workspace - Metrics from workloads 
 
 Azure Monitor Workspace enables metrics collection from workloads using Prometheus.
 
-### Component Overview
+#### Component Overview
 
 The following components are deployed for metrics collection:
 
@@ -131,7 +132,7 @@ The following components are deployed for metrics collection:
 - **ama-metrics-node daemonset pods** (one per node) - Node-level metrics collection
 - **ama-metrics-operator-targets pod** - Operator for managing metric targets
 
-### Enabling Azure Monitor Metrics
+#### Enabling Azure Monitor Metrics
 
 ```bash
 export amwrid=$(az monitor account show --resource-group infrarg --name amwforaks --query id -o tsv)
@@ -145,7 +146,7 @@ az aks update \
   --grafana-resource-id $amgrid
 ```
 
-### Verification Commands
+#### Verification Commands
 
 ```bash
 kubectl get pods -n kube-system | grep -E "(ama-metrics|prometheus)"
@@ -153,11 +154,11 @@ kubectl get pods -n kube-system | grep -E "(ama-metrics|prometheus)"
 kubectl get pods -n kube-system -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[*].image | grep -E "(ama-metrics|prometheus)"
 ```
 
-### AMA Metrics Settings 
+#### AMA Metrics Settings 
 
 Configure custom scraping and settings using configmaps in kube-system namespace.
 
-#### Configure pod annotation-based scraping for prod- namespaces:
+##### Configure pod annotation-based scraping for prod- namespaces:
 
 ```bash
 cat <<EOF > ama-metrics-settings-configmap.yaml
@@ -192,7 +193,7 @@ EOF
 kubectl apply -f ama-metrics-settings-configmap.yaml
 ```
 
-#### Pod annotations required for scraping:
+##### Pod annotations required for scraping:
 ```yaml
 metadata:   
   annotations:
@@ -203,9 +204,9 @@ metadata:
 
 **Reference:** https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-configuration
 
-### Understanding Metrics Collection Types
+#### Understanding Metrics Collection Types
 
-#### Default Metrics Collection with Kube State Metrics (KSM)
+##### Default Metrics Collection with Kube State Metrics (KSM)
 
 **KSM** Kube State Metrics (KSM) does NOT require applications to expose Prometheus metrics. 
 
@@ -220,7 +221,7 @@ metadata:
 - `kube_service_info` - Service metadata
 - `kube_namespace_status_phase` - Namespace status
 
-#### Pod Annotation-Based Scraping
+##### Pod Annotation-Based Scraping
 
 This method requires applications to expose Prometheus metrics and uses pod annotations for discovery.
 
@@ -229,9 +230,9 @@ This method requires applications to expose Prometheus metrics and uses pod anno
 - Spring Boot applications with `/actuator/prometheus`
 - Custom applications with `/metrics` endpoints
 
-### Practical Example: Namespace-Based Scraping
+#### Practical Example: Namespace-Based Scraping
 
-#### Creating Test Namespaces and Workloads
+##### Creating Test Namespaces and Workloads
 
 ```bash
 # Create namespaces
@@ -290,7 +291,7 @@ EOF
 kubectl apply -f prod-web-app.yaml
 ```
 
-#### Why Use Namespace Regex `prod-.*`?
+##### Why Use Namespace Regex `prod-.*`?
 
 ```bash
 # With podannotationnamespaceregex = "prod-.*"
@@ -307,9 +308,9 @@ kubectl get pods --all-namespaces | grep -E "(prod-|dev-)"
 - **Cost**: Lower ingestion costs by filtering irrelevant metrics
 - **Focus**: Production-only dashboards and alerts
 
-### Advanced Scraping with Custom Resource Definitions (CRDs)
+#### Advanced Scraping with Custom Resource Definitions (CRDs)
 
-#### When to Use ServiceMonitor vs PodMonitor
+##### When to Use ServiceMonitor vs PodMonitor
 
 **ServiceMonitor** - Use when you have Kubernetes Services:
 ```yaml
@@ -345,7 +346,7 @@ spec:
     interval: 15s
 ```
 
-#### When to Use Each Approach:
+##### When to Use Each Approach:
 
 | Method | Use Case | Pros | Cons |
 |--------|----------|------|------|
@@ -359,9 +360,9 @@ spec:
 
 **Reference:** https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-crd
 
-### Verification and Troubleshooting
+#### Verification and Troubleshooting
 
-#### Check Metric Collection Status
+##### Check Metric Collection Status
 
 ```bash
 # Verify AMA metrics pods are running
@@ -378,7 +379,7 @@ kubectl get servicemonitors -A
 kubectl get podmonitors -A
 ```
 
-#### Sample Grafana Queries
+##### Sample Grafana Queries
 
 **KSM Metrics (No application metrics needed):**
 ```promql
@@ -401,7 +402,7 @@ http_requests_total{namespace=~"prod-.*"}
 up{namespace=~"prod-.*", job=~".*-metrics"}
 ```
 
-#### Debugging Steps
+##### Debugging Steps
 
 1. **Check ConfigMap Applied:**
    ```bash
@@ -419,28 +420,28 @@ up{namespace=~"prod-.*", job=~".*-metrics"}
    kubectl patch configmap ama-metrics-settings-configmap -n kube-system --type merge -p '{"data":{"debug-mode":"enabled = true"}}'
    ```
 
-### Summary: Complete Monitoring Strategy
+#### Summary: Complete Monitoring Strategy
 
 This setup provides **three layers of metrics collection**:
 
-#### 1. **Infrastructure Metrics (Always Available)**
+##### 1. **Infrastructure Metrics (Always Available)**
 - **Source**: Kube State Metrics (KSM) 
 - **No application changes required**
 - **Covers**: Pod status, deployments, services, nodes, namespaces
 - **Available immediately** after enabling Azure Monitor metrics
 
-#### 2. **Application Metrics (Pod Annotation-Based)**  
+##### 2. **Application Metrics (Pod Annotation-Based)**  
 - **Source**: Applications exposing `/metrics` endpoints
 - **Requires**: Application to expose Prometheus metrics + pod annotations
 - **Filtered by**: `podannotationnamespaceregex = "prod-.*"`
 - **Covers**: Custom business metrics, performance counters
 
-#### 3. **Advanced Custom Metrics (CRD-Based)**
+##### 3. **Advanced Custom Metrics (CRD-Based)**
 - **Source**: ServiceMonitor/PodMonitor custom resources
 - **Use case**: Complex scraping scenarios, multiple endpoints
 - **Benefits**: Fine-grained control, advanced filtering
 
-#### Example Metrics in Grafana:
+##### Example Metrics in Grafana:
 
 **Without any application changes (KSM):**
 ```promql
@@ -463,15 +464,15 @@ application_uptime_seconds{namespace=~"prod-.*"}
 
 This approach ensures you get **comprehensive Kubernetes monitoring** immediately, with the option to add **application-specific metrics** as needed.
 
-### AMW configurations 
+#### AMW configurations 
 
-## Azure Managed Grafana
+### Azure Managed Grafana
 
 Azure Managed Grafana provides managed Grafana instances to view dashboards with source data from Azure Monitor Workspace.
 
-### Grafana Dashboard Recommendations
+#### Grafana Dashboard Recommendations
 
-#### For Kube State Metrics (KSM) - Infrastructure Monitoring
+##### For Kube State Metrics (KSM) - Infrastructure Monitoring
 
 **Azure Managed Grafana - Pre-built Dashboards:**
 
@@ -591,7 +592,7 @@ kube_pod_container_resource_requests
 kube_pod_container_resource_limits
 ```
 
-#### For Application Metrics - Custom Monitoring
+##### For Application Metrics - Custom Monitoring
 
 **Application-Specific Dashboards:**
 1. **"Spring Boot Actuator Dashboard"** (if using Spring Boot)
@@ -627,7 +628,7 @@ histogram_quantile(0.95,
 )
 ```
 
-#### For ServiceMonitor/PodMonitor - Advanced Monitoring
+##### For ServiceMonitor/PodMonitor - Advanced Monitoring
 
 **Custom Resource Dashboards:**
 1. **"Prometheus Targets Dashboard"**
@@ -640,15 +641,15 @@ histogram_quantile(0.95,
    - Service mesh metrics (if using Istio/Linkerd)
    - Database connection pools
 
-### Accessing Dashboards in Azure Managed Grafana
+#### Accessing Dashboards in Azure Managed Grafana
 
-#### Step 1: Access Your Grafana Instance
+##### Step 1: Access Your Grafana Instance
 ```bash
 # Get Grafana URL
 az grafana show --resource-group infrarg --name amgforaks --query properties.endpoint -o tsv
 ```
 
-#### Step 2: Import Pre-built Dashboards
+##### Step 2: Import Pre-built Dashboards
 1. **Go to Grafana UI** → **"+"** → **Import**
 2. **Use Grafana.com Dashboard IDs:**
    - **315**: Kubernetes cluster monitoring
@@ -656,12 +657,12 @@ az grafana show --resource-group infrarg --name amgforaks --query properties.end
    - **6417**: Kubernetes cluster monitoring (advanced)
    - **10000**: Kubernetes ALL-in-one cluster monitoring
 
-#### Step 3: Configure Data Source
+##### Step 3: Configure Data Source
 - **Data Source Type**: Prometheus
 - **URL**: Your Azure Monitor Workspace endpoint
 - **Authentication**: Azure AD authentication (managed identity)
 
-#### Step 4: Customize for Your Environment
+##### Step 4: Customize for Your Environment
 ```bash
 # Filter dashboards to only show prod namespaces
 # In dashboard queries, add: {namespace=~"prod-.*"}
@@ -671,7 +672,7 @@ az grafana show --resource-group infrarg --name amgforaks --query properties.end
 # Modified: kube_pod_status_phase{namespace=~"prod-.*"}
 ```
 
-### Dashboard Categories by Use Case
+#### Dashboard Categories by Use Case
 
 | **Metric Source** | **Dashboard Type** | **Primary Use Case** | **Sample Dashboards** |
 |-------------------|-------------------|---------------------|----------------------|
@@ -681,9 +682,9 @@ az grafana show --resource-group infrarg --name amgforaks --query properties.end
 | **ServiceMonitor** | Service | Service discovery, multi-service | Service Mesh, Microservices Overview |
 | **Node Exporter** | System | Host-level metrics | Node Exporter Full, System Overview |
 
-### Recommended Dashboard Strategy
+#### Recommended Dashboard Strategy
 
-#### 1. **Start with Infrastructure (KSM)**
+##### 1. **Start with Infrastructure (KSM)**
 ```bash
 # Import these first - work immediately without app changes
 - Kubernetes / Compute Resources / Cluster
@@ -691,7 +692,7 @@ az grafana show --resource-group infrarg --name amgforaks --query properties.end
 - Kubernetes / USE Method / Cluster
 ```
 
-#### 2. **Add Application Dashboards**
+##### 2. **Add Application Dashboards**
 ```bash
 # After implementing prometheus metrics in apps
 - Custom application dashboards
@@ -699,7 +700,7 @@ az grafana show --resource-group infrarg --name amgforaks --query properties.end
 - Business metrics dashboards
 ```
 
-#### 3. **Advanced Monitoring**
+##### 3. **Advanced Monitoring**
 ```bash
 # For complex environments
 - Service mesh dashboards
@@ -707,7 +708,7 @@ az grafana show --resource-group infrarg --name amgforaks --query properties.end
 - Custom alerting dashboards
 ```
 
-### Best Practices
+#### Best Practices
 
 1. **Use Template Variables**
    ```bash
@@ -734,12 +735,12 @@ az grafana show --resource-group infrarg --name amgforaks --query properties.end
 
 This dashboard strategy ensures you have **immediate visibility** into your Kubernetes infrastructure through KSM metrics, with the flexibility to add **detailed application monitoring** as your observability requirements grow.
 
-### Quick Start: Verify Your Setup
+#### Quick Start: Verify Your Setup
 
-#### 1. Access Your Grafana Instance
+##### 1. Access Your Grafana Instance
 Your Grafana URL: https://amgforaks-a8bmc4hxhcbpgfbn.eus2.grafana.azure.com
 
-#### 2. Test KSM Metrics (Available Immediately)
+##### 2. Test KSM Metrics (Available Immediately)
 ```promql
 # Verify your prod namespaces are visible
 count by (namespace) (kube_pod_info{namespace=~"prod-.*"})
@@ -751,13 +752,13 @@ kube_pod_status_phase{namespace=~"prod-.*"}
 kube_deployment_status_replicas{namespace=~"prod-.*"}
 ```
 
-#### 3. Expected Results
+##### 3. Expected Results
 You should see:
 - **prod-web**: 2 pods (web-app deployment)
 - **prod-api**: 3 pods (api-app deployment)  
 - **dev-test**: Not visible (filtered out by namespace regex)
 
-#### 4. Create Your First Dashboard
+##### 4. Create Your First Dashboard
 1. **Go to "+"** → **Create Dashboard**
 2. **Add Panel** → **Time Series**
 3. **Use Query**: `count by (namespace) (kube_pod_info{namespace=~"prod-.*"})`
