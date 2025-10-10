@@ -6,16 +6,12 @@ This guide provides comprehensive instructions for implementing observability in
 
 **Choose your path:**
 
-1. **Automated Script**: Run `./setup-observability.sh` for interactive guided setup
-2. **Manual Commands**: Follow [Complete Observability Setup](#complete-observability-setup)
-3. **Quick Reference**: See [QUICKREF.md](QUICKREF.md) for command cheatsheet
-4. **Detailed Guide**: Continue reading this document for step-by-step instructions
+1. **Manual Commands**: Follow [Complete Observability Setup](#complete-observability-setup)
+2. **Detailed Guide**: Continue reading this document for step-by-step instructions
 
 ## 📚 Additional Resources
 
 - **[evolution.md](evolution.md)** - Comprehensive history of logging evolution from bare metal to Kubernetes
-- **[QUICKREF.md](QUICKREF.md)** - Quick reference for common commands and queries
-- **[setup-observability.sh](setup-observability.sh)** - Automated setup script
 
 ## Table of Contents
 
