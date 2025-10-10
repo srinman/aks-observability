@@ -565,9 +565,147 @@ az grafana show \
 
 ---
 
-#### AMA Metrics Settings 
+#### Understanding Metrics Collection Methods
 
-Configure custom scraping and settings using configmaps in kube-system namespace.
+Azure Monitor for AKS provides **four different methods** to collect Prometheus metrics. Understanding when to use each is critical for effective monitoring.
+
+##### Collection Methods Hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. ConfigMap (ama-metrics-settings-configmap)                  │
+│    • Global settings for ALL scraping                           │
+│    • Controls: default targets, scrape intervals, namespaces   │
+│    • ONE ConfigMap for entire cluster                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ├─ Enables ─→  Pod Annotations
+                              ├─ Configures ─→ Default Targets (kubelet, KSM, etc.)
+                              └─ Does NOT affect → ServiceMonitors/PodMonitors
+                                                    (these work independently)
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. Pod Annotations (Simplest Application Metrics)              │
+│    • Add annotations to Pod spec in Deployment/StatefulSet     │
+│    • AMA automatically discovers and scrapes                   │
+│    • Must be enabled via ConfigMap namespace regex             │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. ServiceMonitor (Advanced - Service Discovery)               │
+│    • Kubernetes Custom Resource (CRD)                          │
+│    • Discovers pods via Service labels                        │
+│    • Multiple endpoints, relabeling, filtering                │
+│    • Works INDEPENDENTLY of ConfigMap settings                │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. PodMonitor (Advanced - Direct Pod Discovery)                │
+│    • Kubernetes Custom Resource (CRD)                          │
+│    • Discovers pods directly via Pod labels                   │
+│    • No Service required                                       │
+│    • Works INDEPENDENTLY of ConfigMap settings                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+##### When to Use Each Method
+
+| Method | Purpose | When to Use | Configuration Level |
+|--------|---------|-------------|-------------------|
+| **ConfigMap** | Control default scraping behavior | • Enable/disable default targets (kubelet, KSM)<br>• Set scrape intervals<br>• Enable pod annotation scraping<br>• Control which namespaces are scraped | **Cluster-wide** |
+| **Pod Annotations** | Simple application metrics | • Quick setup for apps exposing `/metrics`<br>• No CRD knowledge required<br>• Simple filtering by namespace<br>• **MOST COMMON for custom apps** | **Per-Application** |
+| **ServiceMonitor** | Advanced service monitoring | • Need service-level discovery<br>• Multiple endpoints per service<br>• Advanced relabeling<br>• Complex filtering requirements | **Per-Application** |
+| **PodMonitor** | Advanced pod monitoring | • Direct pod targeting<br>• No service exists<br>• Different metrics per pod<br>• Maximum control over scraping | **Per-Application** |
+
+##### Azure Best Practices (from Microsoft Documentation)
+
+**Microsoft's Recommended Approach:**
+
+1. **Start with ConfigMap** - Configure cluster-wide defaults
+   - Enable necessary default targets (kubelet, KSM, cAdvisor)
+   - Set reasonable scrape intervals (default: 30s)
+   - Enable pod annotation scraping for specific namespaces
+
+2. **Use Pod Annotations for Most Applications**
+   - Simplest method for custom application metrics
+   - No need to create additional Kubernetes resources
+   - Easy to add to existing Deployments/StatefulSets
+   - **Microsoft recommends this for standard use cases**
+
+3. **Use ServiceMonitor/PodMonitor Only When Needed**
+   - Advanced filtering/relabeling requirements
+   - Multiple scrape endpoints per application
+   - Need fine-grained control over metric collection
+
+**Official Guidance:**
+- **Pod Annotations**: "Add annotations to the pods in your cluster to scrape application pods without creating a custom Prometheus config"
+- **Warning from Microsoft**: "Scraping the pod annotations from many namespaces can generate a very large volume of metrics"
+- **CRDs**: Use "to create custom scrape jobs for further customization and additional targets"
+
+##### Practical Decision Tree
+
+```
+Do you need to collect metrics from your application?
+│
+├─ NO → Use ConfigMap to configure default targets only
+│       (KSM, kubelet, cAdvisor provide infrastructure metrics)
+│
+└─ YES → Does your app expose /metrics endpoint?
+         │
+         ├─ NO → Application changes needed first
+         │
+         └─ YES → Is simple scraping sufficient?
+                  │
+                  ├─ YES → Use Pod Annotations
+                  │        ✅ Add 3 annotations to Deployment
+                  │        ✅ Enable namespace in ConfigMap
+                  │        ✅ Done!
+                  │
+                  └─ NO → Need advanced features?
+                          │
+                          ├─ Service-level discovery → ServiceMonitor
+                          ├─ Direct pod targeting → PodMonitor
+                          └─ Multiple endpoints → ServiceMonitor/PodMonitor
+```
+
+##### Important Relationships
+
+**ConfigMap vs Pod Annotations:**
+- ConfigMap **enables** pod annotation scraping via `podannotationnamespaceregex`
+- Without this ConfigMap setting, pod annotations are **ignored**
+- ConfigMap controls **which namespaces** are scanned for annotations
+
+**ConfigMap vs ServiceMonitor/PodMonitor:**
+- ServiceMonitor and PodMonitor **work independently** of ConfigMap
+- ConfigMap settings do **NOT affect** CRD-based scraping
+- You can use both simultaneously without conflicts
+
+**ServiceMonitor vs PodMonitor:**
+- ServiceMonitor discovers pods **through Services** (uses service labels)
+- PodMonitor discovers pods **directly** (uses pod labels)
+- ServiceMonitor requires a Kubernetes Service to exist
+- PodMonitor does not require a Service
+
+**Reference:** 
+- https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-configuration
+- https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-crd
+
+---
+
+#### ConfigMap Settings (Cluster-Wide Configuration)
+
+**Purpose:** Configure global settings for default targets and enable pod annotation-based scraping.
+
+**What it controls:**
+- Default targets (kubelet, KSM, cAdvisor, etc.)
+- Scrape intervals for default targets
+- Which namespaces to scan for pod annotations
+- Debug mode and cluster alias
+
+**When to use:**
+- First step after enabling Azure Monitor metrics
+- To control what infrastructure metrics are collected
+- To enable pod annotation scraping for specific namespaces
 
 ##### Configure pod annotation-based scraping for prod- namespaces:
 
@@ -632,14 +770,28 @@ metadata:
 - `kube_service_info` - Service metadata
 - `kube_namespace_status_phase` - Namespace status
 
-##### Pod Annotation-Based Scraping
+---
 
-This method requires applications to expose Prometheus metrics and uses pod annotations for discovery.
+#### Pod Annotation-Based Scraping (Simple Application Metrics)
+
+**Purpose:** Enable automatic scraping of application pods that expose Prometheus metrics using simple pod annotations.
+
+**Prerequisites:**
+1. Application must expose metrics at an HTTP endpoint (e.g., `/metrics`)
+2. Namespace must be enabled in ConfigMap's `podannotationnamespaceregex` setting
+
+**How it works:**
+- Add 3 annotations to your pod template in Deployment/StatefulSet
+- AMA-metrics automatically discovers pods with these annotations
+- Only pods in namespaces matching the ConfigMap regex are scraped
+- No additional Kubernetes resources (CRDs) required
 
 **When to use pod annotations:**
-- Applications that expose custom business metrics
+- **Most common method** for custom application metrics
 - Spring Boot applications with `/actuator/prometheus`
 - Custom applications with `/metrics` endpoints
+- Simple, straightforward scraping requirements
+- **Microsoft's recommended approach** for standard use cases
 
 #### Practical Example: Namespace-Based Scraping
 
@@ -721,9 +873,38 @@ kubectl get pods --all-namespaces | grep -E "(prod-|dev-)"
 
 #### Advanced Scraping with Custom Resource Definitions (CRDs)
 
+**Purpose:** Provide fine-grained control over metric collection when pod annotations are insufficient.
+
+**Key Characteristics:**
+- ServiceMonitor and PodMonitor work **independently** of ConfigMap settings
+- Do **NOT require** namespace to be listed in `podannotationnamespaceregex`
+- More complex but offer advanced features (relabeling, multiple endpoints, filtering)
+- Use Prometheus Operator API specification
+
+**When to use CRDs instead of pod annotations:**
+- Need advanced relabeling or filtering
+- Multiple scrape endpoints per application
+- Different scrape intervals per application
+- Complex label manipulation
+- Service mesh or multi-service monitoring
+
+**Microsoft Guidance:** "Use custom resource definitions (CRDs) to create custom scrape jobs for further customization and additional targets" (when pod annotations are insufficient)
+
 ##### When to Use ServiceMonitor vs PodMonitor
 
-**ServiceMonitor** - Use when you have Kubernetes Services:
+**ServiceMonitor** - Service-based discovery:
+- **Discovery method**: Finds pods through Kubernetes Service
+- **Requires**: A Service resource must exist
+- **Use when**: You have a Service exposing your application
+- **Advantage**: Service-level abstraction, load balancing awareness
+- **Common scenarios**: Production applications with Services, microservices
+
+**PodMonitor** - Direct pod discovery:
+- **Discovery method**: Finds pods directly by pod labels
+- **Requires**: No Service needed
+- **Use when**: No Service exists or you need pod-specific metrics
+- **Advantage**: Direct pod access, more granular control
+- **Common scenarios**: DaemonSets, StatefulSets, testing environments
 ```yaml
 apiVersion: azmonitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -757,19 +938,185 @@ spec:
     interval: 15s
 ```
 
-##### When to Use Each Approach:
+##### Comparison Table
 
-| Method | Use Case | Pros | Cons |
-|--------|----------|------|------|
-| **Pod Annotations** | Simple application metrics | Easy setup, no CRDs needed | Limited configuration options |
-| **ServiceMonitor** | Service-level monitoring | More flexible, service discovery | Requires services |
-| **PodMonitor** | Pod-level monitoring | Direct pod access, fine control | More complex configuration |
+| Feature | Pod Annotations | ServiceMonitor | PodMonitor |
+|---------|----------------|----------------|------------|
+| **Configuration Type** | Annotations in Pod spec | Kubernetes CRD | Kubernetes CRD |
+| **Complexity** | ⭐ Simple | ⭐⭐⭐ Advanced | ⭐⭐⭐ Advanced |
+| **Requires ConfigMap** | ✅ Yes (namespace regex) | ❌ No (independent) | ❌ No (independent) |
+| **Requires Service** | ❌ No | ✅ Yes | ❌ No |
+| **Discovery Method** | Pod annotations | Service labels | Pod labels |
+| **Scrape Interval** | Fixed (from ConfigMap) | Per-monitor customizable | Per-monitor customizable |
+| **Relabeling Support** | ❌ No | ✅ Yes (advanced) | ✅ Yes (advanced) |
+| **Multiple Endpoints** | ❌ No (single port) | ✅ Yes | ✅ Yes |
+| **Namespace Filtering** | Via ConfigMap regex | Via CRD selector | Via CRD selector |
+| **Microsoft Recommendation** | ✅ **Start here** | Use when needed | Use when needed |
 
-**Pod Annotations** → Simple cases, quick setup
-**ServiceMonitor** → Production applications with services  
-**PodMonitor** → Advanced scenarios, specific pod targeting
+**Decision Guide:**
+- **Use Pod Annotations**: For 80% of custom application metrics (simple, quick, sufficient)
+- **Use ServiceMonitor**: When you need service-level discovery and advanced features
+- **Use PodMonitor**: When you need direct pod targeting without Services
 
 **Reference:** https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-crd
+
+---
+
+#### Complete Example: Same Application, Three Methods
+
+Let's show how to scrape the same application using all three methods:
+
+**Application Details:**
+- Name: `my-webapp`
+- Namespace: `prod-web`
+- Metrics endpoint: `http://pod-ip:8080/metrics`
+- Has a Kubernetes Service
+
+##### Method 1: Pod Annotations (Recommended - Simplest)
+
+**Step 1: Enable namespace in ConfigMap**
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ama-metrics-settings-configmap
+  namespace: kube-system
+data:
+  pod-annotation-based-scraping: |-
+    podannotationnamespaceregex = "prod-.*"
+EOF
+```
+
+**Step 2: Add annotations to Deployment**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-webapp
+  namespace: prod-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: my-webapp
+  template:
+    metadata:
+      labels:
+        app: my-webapp
+      annotations:
+        prometheus.io/scrape: 'true'    # Required
+        prometheus.io/path: '/metrics'   # Optional, defaults to /metrics
+        prometheus.io/port: '8080'       # Required
+    spec:
+      containers:
+      - name: webapp
+        image: my-webapp:latest
+        ports:
+        - containerPort: 8080
+          name: metrics
+```
+
+**Result:** AMA-metrics automatically discovers and scrapes both pods at `http://pod-ip:8080/metrics`
+
+##### Method 2: ServiceMonitor (Advanced - Service Discovery)
+
+**Step 1: Create Service**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-webapp-service
+  namespace: prod-web
+  labels:
+    app: my-webapp-service    # ServiceMonitor will use this
+spec:
+  selector:
+    app: my-webapp
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+```
+
+**Step 2: Create ServiceMonitor**
+```yaml
+apiVersion: azmonitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: my-webapp-monitor
+  namespace: prod-web
+spec:
+  selector:
+    matchLabels:
+      app: my-webapp-service    # Matches Service labels
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+```
+
+**Result:** ServiceMonitor discovers the Service, then scrapes all pods behind it
+
+##### Method 3: PodMonitor (Advanced - Direct Pod Discovery)
+
+**No Service required**
+
+```yaml
+apiVersion: azmonitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: my-webapp-monitor
+  namespace: prod-web
+spec:
+  selector:
+    matchLabels:
+      app: my-webapp    # Matches Pod labels directly
+  podMetricsEndpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+```
+
+**Result:** PodMonitor directly discovers and scrapes pods with label `app=my-webapp`
+
+##### Comparison of Results
+
+All three methods scrape the same metrics, but:
+
+| Aspect | Pod Annotations | ServiceMonitor | PodMonitor |
+|--------|----------------|----------------|------------|
+| **Setup Steps** | 2 (ConfigMap + Deployment) | 2 (Service + ServiceMonitor) | 1 (PodMonitor only) |
+| **Resources Created** | 0 extra (just annotations) | 1 (ServiceMonitor CRD) | 1 (PodMonitor CRD) |
+| **ConfigMap Dependency** | ✅ Yes (must enable namespace) | ❌ No | ❌ No |
+| **Service Required** | ❌ No | ✅ Yes | ❌ No |
+| **Scrape Interval** | Fixed (from ConfigMap) | Customizable per monitor | Customizable per monitor |
+| **Label Control** | ❌ Limited | ✅ Full (relabeling) | ✅ Full (relabeling) |
+
+**Microsoft's Recommendation:** Start with Pod Annotations. Only use ServiceMonitor/PodMonitor if you need advanced features.
+
+---
+
+#### Summary: Choosing the Right Method
+
+**Start Here (90% of cases):**
+```
+1. Enable namespace in ConfigMap → podannotationnamespaceregex = "prod-.*"
+2. Add 3 annotations to your Deployment
+3. Done! Metrics automatically scraped
+```
+
+**Upgrade to CRDs only when you need:**
+- Custom scrape intervals per application
+- Advanced label relabeling/filtering
+- Multiple endpoints per application
+- TLS/authentication
+- Complex service discovery
+
+**ConfigMap Role:**
+- Controls **default targets** (kubelet, KSM, cAdvisor)
+- **Enables** pod annotation scraping
+- Does **NOT affect** ServiceMonitor/PodMonitor (they work independently)
 
 #### Verification and Troubleshooting
 
