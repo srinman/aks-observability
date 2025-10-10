@@ -2,8 +2,27 @@
 
 This guide provides comprehensive instructions for implementing observability in Azure Kubernetes Service (AKS) clusters using Azure Monitor, including logs, metrics, and visualization components.
 
+## 🚀 Quick Start Options
+
+**Choose your path:**
+
+1. **Automated Script**: Run `./setup-observability.sh` for interactive guided setup
+2. **Manual Commands**: Follow [Complete Observability Setup](#complete-observability-setup)
+3. **Quick Reference**: See [QUICKREF.md](QUICKREF.md) for command cheatsheet
+4. **Detailed Guide**: Continue reading this document for step-by-step instructions
+
+## 📚 Additional Resources
+
+- **[evolution.md](evolution.md)** - Comprehensive history of logging evolution from bare metal to Kubernetes
+- **[QUICKREF.md](QUICKREF.md)** - Quick reference for common commands and queries
+- **[setup-observability.sh](setup-observability.sh)** - Automated setup script
+
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
+- [Environment Variables Setup](#environment-variables-setup)
+- [Complete Observability Setup](#complete-observability-setup)
+  - [Verify Complete Setup](#verify-complete-setup)
 - [Overview](#overview)
 - [Azure Monitor Components](#azure-monitor-components)
 - [Monitoring Data Types](#monitoring-data-types)
@@ -11,9 +30,165 @@ This guide provides comprehensive instructions for implementing observability in
   - [Platform Metrics](#platform-metrics)
   - [Resource Logs](#resource-logs)
   - [Syslog](#syslog)
-- [Container Insights Configuration](#container-insights-configuration)
-- [Azure Monitor Workspace Configuration](#azure-monitor-workspace-configuration)
+  - [Container Insights](#container-insights---logs-from-pod-stdoutstderr)
+  - [Azure Monitor Workspace](#azure-monitor-workspace---metrics-from-workloads)
 - [Azure Managed Grafana](#azure-managed-grafana)
+
+---
+
+## Prerequisites
+
+The following Azure resources must be created before configuring AKS observability:
+
+- **Log Analytics Workspace**: `aksresourcelogs` in resource group `infrarg`
+- **Azure Monitor Workspace**: `amwforaks` in resource group `infrarg`
+- **Azure Managed Grafana**: `amgforaks` in resource group `infrarg`
+
+---
+
+## Environment Variables Setup
+
+Set up the following environment variables for your AKS cluster and monitoring resources:
+
+```bash
+# AKS Cluster Configuration
+export CLUSTER_NAME="aks-cilium"
+export CLUSTER_RG="cni-comparison-rg"
+
+# Log Analytics Workspace (for Container Insights logs)
+export LAW_RESOURCE_ID=$(az monitor log-analytics workspace show \
+  --resource-group infrarg \
+  --name aksresourcelogs \
+  --query id -o tsv)
+
+# Azure Monitor Workspace (for Prometheus metrics)
+export AMW_RESOURCE_ID=$(az monitor account show \
+  --resource-group infrarg \
+  --name amwforaks \
+  --query id -o tsv)
+
+# Azure Managed Grafana (for visualization)
+export AMG_RESOURCE_ID=$(az grafana show \
+  --resource-group infrarg \
+  --name amgforaks \
+  --query id -o tsv)
+
+# Verify environment variables
+echo "Cluster: $CLUSTER_NAME"
+echo "Resource Group: $CLUSTER_RG"
+echo "LAW ID: $LAW_RESOURCE_ID"
+echo "AMW ID: $AMW_RESOURCE_ID"
+echo "AMG ID: $AMG_RESOURCE_ID"
+```
+
+---
+
+## Complete Observability Setup
+
+Add complete observability to an existing AKS cluster:
+
+```bash
+# Step 1: Enable Container Insights (logs)
+az aks enable-addons \
+  --addon monitoring \
+  --name $CLUSTER_NAME \
+  --resource-group $CLUSTER_RG \
+  --workspace-resource-id $LAW_RESOURCE_ID
+
+# Step 2: Enable Azure Monitor metrics (Prometheus)
+az aks update \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
+  --enable-azure-monitor-metrics \
+  --azure-monitor-workspace-resource-id $AMW_RESOURCE_ID 
+
+az aks update \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
+  --grafana-resource-id $AMG_RESOURCE_ID
+
+# Step 3: Get cluster resource ID
+CLUSTER_RESOURCE_ID=$(az aks show \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
+  --query id -o tsv)
+
+# Step 4: Enable control plane diagnostic settings
+az monitor diagnostic-settings create \
+  --name "aks-control-plane-logs" \
+  --resource $CLUSTER_RESOURCE_ID \
+  --workspace $LAW_RESOURCE_ID \
+  --logs '[
+    {"category": "kube-apiserver", "enabled": true},
+    {"category": "kube-controller-manager", "enabled": true},
+    {"category": "kube-scheduler", "enabled": true},
+    {"category": "cluster-autoscaler", "enabled": true},
+    {"category": "cloud-controller-manager", "enabled": true},
+    {"category": "guard", "enabled": true}
+  ]'
+
+# Step 5: Disable Container Insights metrics (to avoid duplication with AMW)
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: container-azm-ms-agentconfig
+  namespace: kube-system
+data:
+  schema-version: v1
+  config-version: ver1
+  prometheus-data-collection-settings: |-
+    [prometheus_data_collection_settings.cluster]
+        interval = "1m"
+        monitor_kubernetes_pods = false
+    [prometheus_data_collection_settings.node]
+        interval = "1m"
+EOF
+
+echo "✅ AKS cluster updated with complete observability stack!"
+echo "📊 Grafana URL: $(az grafana show --resource-group infrarg --name amgforaks --query properties.endpoint -o tsv)"
+```
+
+### Verify Complete Setup
+
+```bash
+# 1. Check Container Insights pods
+echo "=== Container Insights (Logs) ==="
+kubectl get pods -n kube-system | grep ama-logs
+
+
+
+# 2. Check Azure Monitor Metrics pods
+echo "=== Azure Monitor Metrics (Prometheus) ==="
+kubectl get pods -n kube-system | grep ama-metrics
+
+# 3. Verify diagnostic settings
+echo "=== Control Plane Logs ==="
+CLUSTER_RESOURCE_ID=$(az aks show \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
+  --query id -o tsv)
+
+az monitor diagnostic-settings list \
+  --resource $CLUSTER_RESOURCE_ID \
+  --query "value[].name" -o tsv
+
+# 4. Get Grafana URL
+echo "=== Grafana Dashboard ==="
+az grafana show \
+  --resource-group infrarg \
+  --name amgforaks \
+  --query properties.endpoint -o tsv
+
+echo ""
+echo "✅ Setup complete! Your AKS cluster now has:"
+echo "  📝 Container logs (stdout/stderr) → aksresourcelogs (LAW)"
+echo "  🔧 Control plane logs → aksresourcelogs (LAW)"
+echo "  📊 Prometheus metrics → amwforaks (AMW)"
+echo "  📈 Grafana dashboards → amgforaks (AMG)"
+```
+
+---
 
 ## Overview
 
@@ -64,10 +239,108 @@ Enable with 'Diagnostic Settings'
 - https://learn.microsoft.com/en-us/azure/aks/monitor-aks?tabs=cilium#aks-control-plane-resource-logs  
 - https://learn.microsoft.com/en-us/azure/aks/monitor-aks?tabs=cilium#sample-log-queries  
 
+#### Enable Diagnostic Settings
+
+```bash
+# Get cluster resource ID
+CLUSTER_RESOURCE_ID=$(az aks show \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
+  --query id -o tsv)
+
+# Enable diagnostic settings for control plane logs
+az monitor diagnostic-settings create \
+  --name "aks-control-plane-logs" \
+  --resource $CLUSTER_RESOURCE_ID \
+  --workspace $LAW_RESOURCE_ID \
+  --logs '[
+    {
+      "category": "kube-apiserver",
+      "enabled": true
+    },
+    {
+      "category": "kube-controller-manager",
+      "enabled": true
+    },
+    {
+      "category": "kube-scheduler",
+      "enabled": true
+    },
+    {
+      "category": "kube-audit",
+      "enabled": true
+    },
+    {
+      "category": "cluster-autoscaler",
+      "enabled": true
+    },
+    {
+      "category": "cloud-controller-manager",
+      "enabled": true
+    },
+    {
+      "category": "guard",
+      "enabled": true
+    },
+    {
+      "category": "csi-azuredisk-controller",
+      "enabled": true
+    },
+    {
+      "category": "csi-azurefile-controller",
+      "enabled": true
+    },
+    {
+      "category": "csi-snapshot-controller",
+      "enabled": true
+    }
+  ]'
+```
+
+#### Verify Diagnostic Settings
+
+```bash
+# List diagnostic settings
+az monitor diagnostic-settings list \
+  --resource $CLUSTER_RESOURCE_ID \
+  --output table
+
+# Show specific diagnostic setting
+az monitor diagnostic-settings show \
+  --name "aks-control-plane-logs" \
+  --resource $CLUSTER_RESOURCE_ID
+```
+
+#### Query Control Plane Logs
+
+```bash
+# Portal: Navigate to Log Analytics Workspace → Logs
+# Run KQL query:
+```
+
 **Sample Query:**
 ```kusto
 AKSControlPlane
 | where Category == "kube-apiserver"
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, Category, log_s
+| order by TimeGenerated desc
+| take 100
+```
+
+**Other useful queries:**
+```kusto
+// Audit events
+AKSAudit
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, verb_s, requestURI_s, user_username_s
+| order by TimeGenerated desc
+
+// Cluster autoscaler logs
+AKSControlPlane
+| where Category == "cluster-autoscaler"
+| where TimeGenerated > ago(1h)
+| order by TimeGenerated desc
 ```
 
 ---
@@ -76,9 +349,54 @@ AKSControlPlane
 
 Syslog provides system-level logs from worker nodes.
 
-**Cluster Creation with Monitoring:**
+#### Enable Syslog Collection
+
 ```bash
-az aks create -g <clusterResourceGroup> -n <clusterName> --enable-managed-identity --node-count 1 --enable-addons monitoring --data-collection-settings dataCollectionSettings.json --generate-ssh-keys  
+# Create data collection settings file
+cat <<EOF > dataCollectionSettings.json
+{
+  "syslog": {
+    "facilities": [
+      {
+        "name": "kern",
+        "logLevels": ["Debug", "Info", "Notice", "Warning", "Error", "Critical", "Alert", "Emergency"]
+      },
+      {
+        "name": "user",
+        "logLevels": ["Debug", "Info", "Notice", "Warning", "Error", "Critical", "Alert", "Emergency"]
+      },
+      {
+        "name": "daemon",
+        "logLevels": ["Warning", "Error", "Critical", "Alert", "Emergency"]
+      },
+      {
+        "name": "syslog",
+        "logLevels": ["Warning", "Error", "Critical", "Alert", "Emergency"]
+      }
+    ]
+  }
+}
+EOF
+
+# Update cluster with syslog collection
+az aks update \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
+  --data-collection-settings dataCollectionSettings.json
+```
+
+#### Verification
+
+```bash
+# Verify AMA agent is collecting syslog
+kubectl get pods -n kube-system | grep ama-logs
+
+# Query syslog data in Log Analytics Workspace
+# Go to Azure Portal → Log Analytics Workspace → Logs
+# Run query:
+# Syslog
+# | where Computer contains "aks"
+# | order by TimeGenerated desc
 ```
 
 ---
@@ -89,45 +407,107 @@ Container Insights provides logs from pod stdout/stderr.
 
 > **Important**: Container Insights collect metric data in addition to logs. This must be disabled when AMW is used for metrics collection.
 
-#### Enabling Container Insights
-
-Container Insights uses AMA agent for log collection.
+#### Enable Container Insights
 
 ```bash
-export lawrid=$(az monitor log-analytics workspace show --resource-group demolabrg --name demolabakscontainerlogs --query id -o tsv)
-
+# Enable Container Insights add-on on existing cluster
 az aks enable-addons \
   --addon monitoring \
-  --name keda-training-aks \
-  --resource-group keda-rg \
-  --workspace-resource-id $lawrid
+  --name $CLUSTER_NAME \
+  --resource-group $CLUSTER_RG \
+  --workspace-resource-id $LAW_RESOURCE_ID
+```
+
+#### Disable Container Insights Metrics Collection
+
+When using Azure Monitor Workspace (AMW) for Prometheus metrics, disable metrics collection in Container Insights to avoid duplication:
+
+```bash
+# Create ConfigMap to disable metrics collection
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: container-azm-ms-agentconfig
+  namespace: kube-system
+data:
+  schema-version: v1
+  config-version: ver1
+  log-data-collection-settings: |-
+    [log_collection_settings]
+       [log_collection_settings.stdout]
+          enabled = true
+       [log_collection_settings.stderr]
+          enabled = true
+       [log_collection_settings.env_var]
+          enabled = true
+  prometheus-data-collection-settings: |-
+    [prometheus_data_collection_settings.cluster]
+        interval = "1m"
+        monitor_kubernetes_pods = false
+    [prometheus_data_collection_settings.node]
+        interval = "1m"
+EOF
 ```
 
 #### Verification Commands
 
 ```bash
+# Check AMA DaemonSet (one pod per node)
 kubectl get ds ama-logs --namespace=kube-system
+
+# Check AMA ReplicaSet deployment
 kubectl get deployment ama-logs-rs --namespace=kube-system
+
+# View all monitoring pods
+kubectl get pods -n kube-system | grep ama-logs
+
+
 ```
 
-**Review pods:**
+**Reference:** https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-monitoring-enable
+
+#### Verify Log Data in Log Analytics Workspace
+
 ```bash
-k describe pod ama-logs-rs-5666f4f584-5qb7l  -n kube-system | grep -i image: 
-    Image:         mcr.microsoft.com/aks/msi/addon-token-adapter:master.250604.1
-    Image:          mcr.microsoft.com/azuremonitor/containerinsights/ciprod:3.1.28
-k describe pod ama-logs-d6jxv  -n kube-system | grep -i image: 
-    Image:         mcr.microsoft.com/aks/msi/addon-token-adapter:master.250604.1
-    Image:          mcr.microsoft.com/azuremonitor/containerinsights/ciprod:3.1.28
-    Image:          mcr.microsoft.com/azuremonitor/containerinsights/ciprod:3.1.28
+# Portal: Navigate to Log Analytics Workspace → Logs
+# Query ContainerLogV2 table:
 ```
 
-**Cluster Status:**
+**Sample KQL Query:**
+```kusto
+ContainerLogV2
+| where TimeGenerated > ago(1h)
+| where PodNamespace in ("default", "kube-system")
+| project TimeGenerated, PodName, PodNamespace, LogMessage
+| order by TimeGenerated desc
+| take 100
+```
+
+#### Cluster Status Check
+
 ```bash
-az aks show --resource-group keda-rg --name keda-training-aks
+# Verify monitoring addon status
+az aks show \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
+  --query "addonProfiles.omsagent" -o json
 ```
 
-In portal, check log analytics workspace for logs: 
-table: ContainerLogV2   
+**Expected Output:**
+```json
+{
+  "config": {
+    "logAnalyticsWorkspaceResourceID": "/subscriptions/<subscription-id>/resourceGroups/infrarg/providers/Microsoft.OperationalInsights/workspaces/aksresourcelogs"
+  },
+  "enabled": true,
+  "identity": {
+    "clientId": "<client-id>",
+    "objectId": "<object-id>",
+    "resourceId": "<resource-id>"
+  }
+}
+```
 
 ---
 
@@ -144,27 +524,50 @@ The following components are deployed for metrics collection:
 - **ama-metrics-node daemonset pods** (one per node) - Node-level metrics collection
 - **ama-metrics-operator-targets pod** - Operator for managing metric targets
 
-#### Enabling Azure Monitor Metrics
+#### Enable Azure Monitor Metrics
 
 ```bash
-export amwrid=$(az monitor account show --resource-group infrarg --name amwforaks --query id -o tsv)
-export amgrid=$(az grafana show --resource-group infrarg --name amgforaks --query id -o tsv)
-
+# Enable Azure Monitor metrics on existing cluster
 az aks update \
+  --resource-group $CLUSTER_RG \
+  --name $CLUSTER_NAME \
   --enable-azure-monitor-metrics \
-  --name keda-training-aks \
-  --resource-group keda-rg \
-  --azure-monitor-workspace-resource-id $amwrid \
-  --grafana-resource-id $amgrid
+  --azure-monitor-workspace-resource-id $AMW_RESOURCE_ID \
+  --grafana-resource-id $AMG_RESOURCE_ID
 ```
 
 #### Verification Commands
 
 ```bash
+# Check all AMA metrics pods
 kubectl get pods -n kube-system | grep -E "(ama-metrics|prometheus)"
 
+# Check pod images
 kubectl get pods -n kube-system -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[*].image | grep -E "(ama-metrics|prometheus)"
+
+# Expected pods:
+# - ama-metrics-* (ReplicaSet - main collection)
+# - ama-metrics-ksm-* (Kube State Metrics)
+# - ama-metrics-node-* (DaemonSet - one per node)
+# - ama-metrics-operator-targets-* (Operator)
 ```
+
+#### Verify Metrics in Grafana
+
+```bash
+# Get Grafana endpoint
+az grafana show \
+  --resource-group infrarg \
+  --name amgforaks \
+  --query properties.endpoint -o tsv
+
+# Access Grafana and run test query:
+# kube_pod_info
+# kube_node_info
+# up{job="kubelet"}
+```
+
+---
 
 #### AMA Metrics Settings 
 

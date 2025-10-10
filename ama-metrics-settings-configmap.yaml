@@ -5,10 +5,8 @@ metadata:
   namespace: kube-system
 data:
   schema-version:
-    #string.used by agent to parse config. supported versions are {v1}. Configs with other schema versions will be rejected by the agent.
     v1
   config-version:
-    #string.used by customer to keep track of this config file's version in their source control/repository (max allowed 10 chars, other chars will be truncated)
     ver1
   default-scrape-settings-enabled: |-
     kubelet = true
@@ -22,35 +20,6 @@ data:
     windowskubeproxy = false
     kappiebasic = true
     prometheuscollectorhealth = false
-  default-targets-metrics-keep-list: |-
-    kubelet = ""
-    coredns = ""
-    cadvisor = ""
-    kubeproxy = ""
-    apiserver = ""
-    kubestate = ""
-    nodeexporter = ""
-    windowsexporter = ""
-    windowskubeproxy = ""
-    kappiebasic = ""
-    prometheuscollectorhealth = ""
-  default-targets-scrape-interval-settings: |-
-    kubelet = "30s"
-    coredns = "30s"
-    cadvisor = "30s"
-    kubeproxy = "30s"
-    apiserver = "30s"
-    kubestate = "30s"
-    nodeexporter = "30s"
-    windowsexporter = "30s"
-    windowskubeproxy = "30s"
-    kappiebasic = "30s"
-    prometheuscollectorhealth = "30s"
-    podannotations = "30s"
-  prometheus-collector-settings: |-
-    cluster_alias = ""
-  default-targets-keep-lists: |-
-    minimalingestionprofile = true
   pod-annotation-based-scraping: |-
     podannotationnamespaceregex = "prod-.*"
   debug-mode: |-

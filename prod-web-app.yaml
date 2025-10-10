@@ -30,6 +30,8 @@ kind: Service
 metadata:
   name: web-app-service
   namespace: prod-web
+  labels:
+    app: web-app-service
 spec:
   selector:
     app: web-app
