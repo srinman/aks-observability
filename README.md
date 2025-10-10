@@ -235,7 +235,9 @@ Enable with 'Diagnostic Settings'
 - https://learn.microsoft.com/en-us/azure/aks/monitor-aks?tabs=cilium#aks-control-plane-resource-logs  
 - https://learn.microsoft.com/en-us/azure/aks/monitor-aks?tabs=cilium#sample-log-queries  
 
-#### Enable Diagnostic Settings
+> **Note:** Control plane logs are already enabled in [Step 4 of Complete Observability Setup](#complete-observability-setup). The sections below show individual commands for reference.
+
+#### Step 1: Enable Diagnostic Settings
 
 ```bash
 # Get cluster resource ID
@@ -293,7 +295,7 @@ az monitor diagnostic-settings create \
   ]'
 ```
 
-#### Verify Diagnostic Settings
+#### Step 2: Verify Diagnostic Settings
 
 ```bash
 # List diagnostic settings
@@ -307,7 +309,7 @@ az monitor diagnostic-settings show \
   --resource $CLUSTER_RESOURCE_ID
 ```
 
-#### Query Control Plane Logs
+#### Step 3: Query Control Plane Logs
 
 ```bash
 # Portal: Navigate to Log Analytics Workspace → Logs
@@ -345,7 +347,7 @@ AKSControlPlane
 
 Syslog provides system-level logs from worker nodes.
 
-#### Enable Syslog Collection
+#### Step 1: Enable Syslog Collection
 
 ```bash
 # Create data collection settings file
@@ -381,7 +383,7 @@ az aks update \
   --data-collection-settings dataCollectionSettings.json
 ```
 
-#### Verification
+#### Step 2: Verification
 
 ```bash
 # Verify AMA agent is collecting syslog
@@ -403,7 +405,9 @@ Container Insights provides logs from pod stdout/stderr.
 
 > **Important**: Container Insights collect metric data in addition to logs. This must be disabled when AMW is used for metrics collection.
 
-#### Enable Container Insights
+> **Note:** Container Insights are already enabled in [Step 1 of Complete Observability Setup](#complete-observability-setup). The sections below show individual commands for reference.
+
+#### Step 1: Enable Container Insights
 
 ```bash
 # Enable Container Insights add-on on existing cluster
@@ -414,7 +418,7 @@ az aks enable-addons \
   --workspace-resource-id $LAW_RESOURCE_ID
 ```
 
-#### Disable Container Insights Metrics Collection
+#### Step 2: Disable Container Insights Metrics Collection
 
 When using Azure Monitor Workspace (AMW) for Prometheus metrics, disable metrics collection in Container Insights to avoid duplication:
 
@@ -446,7 +450,7 @@ data:
 EOF
 ```
 
-#### Verification Commands
+#### Step 3: Verification Commands
 
 ```bash
 # Check AMA DaemonSet (one pod per node)
@@ -463,7 +467,7 @@ kubectl get pods -n kube-system | grep ama-logs
 
 **Reference:** https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-monitoring-enable
 
-#### Verify Log Data in Log Analytics Workspace
+#### Step 4: Verify Log Data in Log Analytics Workspace
 
 ```bash
 # Portal: Navigate to Log Analytics Workspace → Logs
@@ -480,7 +484,7 @@ ContainerLogV2
 | take 100
 ```
 
-#### Cluster Status Check
+#### Step 5: Cluster Status Check
 
 ```bash
 # Verify monitoring addon status
@@ -520,52 +524,11 @@ The following components are deployed for metrics collection:
 - **ama-metrics-node daemonset pods** (one per node) - Node-level metrics collection
 - **ama-metrics-operator-targets pod** - Operator for managing metric targets
 
-#### Enable Azure Monitor Metrics
-
-```bash
-# Enable Azure Monitor metrics on existing cluster
-az aks update \
-  --resource-group $CLUSTER_RG \
-  --name $CLUSTER_NAME \
-  --enable-azure-monitor-metrics \
-  --azure-monitor-workspace-resource-id $AMW_RESOURCE_ID \
-  --grafana-resource-id $AMG_RESOURCE_ID
-```
-
-#### Verification Commands
-
-```bash
-# Check all AMA metrics pods
-kubectl get pods -n kube-system | grep -E "(ama-metrics|prometheus)"
-
-# Check pod images
-kubectl get pods -n kube-system -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[*].image | grep -E "(ama-metrics|prometheus)"
-
-# Expected pods:
-# - ama-metrics-* (ReplicaSet - main collection)
-# - ama-metrics-ksm-* (Kube State Metrics)
-# - ama-metrics-node-* (DaemonSet - one per node)
-# - ama-metrics-operator-targets-* (Operator)
-```
-
-#### Verify Metrics in Grafana
-
-```bash
-# Get Grafana endpoint
-az grafana show \
-  --resource-group infrarg \
-  --name amgforaks \
-  --query properties.endpoint -o tsv
-
-# Access Grafana and run test query:
-# kube_pod_info
-# kube_node_info
-# up{job="kubelet"}
-```
+> **Note:** Azure Monitor Metrics are already enabled in [Step 2 of Complete Observability Setup](#complete-observability-setup). The sections below explain how to configure and customize metrics collection.
 
 ---
 
-#### Understanding Metrics Collection Methods
+#### Step 1: Understanding Metrics Collection Methods
 
 Azure Monitor for AKS provides **four different methods** to collect Prometheus metrics. Understanding when to use each is critical for effective monitoring.
 
@@ -692,7 +655,7 @@ Do you need to collect metrics from your application?
 
 ---
 
-#### ConfigMap Settings (Cluster-Wide Configuration)
+#### Step 2: ConfigMap Settings (Cluster-Wide Configuration)
 
 **Purpose:** Configure global settings for default targets and enable pod annotation-based scraping.
 
@@ -772,7 +735,7 @@ metadata:
 
 ---
 
-#### Pod Annotation-Based Scraping (Simple Application Metrics)
+#### Step 3: Pod Annotation-Based Scraping (Simple Application Metrics)
 
 **Purpose:** Enable automatic scraping of application pods that expose Prometheus metrics using simple pod annotations.
 
@@ -871,7 +834,7 @@ kubectl get pods --all-namespaces | grep -E "(prod-|dev-)"
 - **Cost**: Lower ingestion costs by filtering irrelevant metrics
 - **Focus**: Production-only dashboards and alerts
 
-#### Advanced Scraping with Custom Resource Definitions (CRDs)
+#### Step 4: Advanced Scraping with Custom Resource Definitions (CRDs)
 
 **Purpose:** Provide fine-grained control over metric collection when pod annotations are insufficient.
 
@@ -962,7 +925,7 @@ spec:
 
 ---
 
-#### Complete Example: Same Application, Three Methods
+#### Step 5: Complete Example - Same Application, Three Methods
 
 Let's show how to scrape the same application using all three methods:
 
@@ -1118,7 +1081,9 @@ All three methods scrape the same metrics, but:
 - **Enables** pod annotation scraping
 - Does **NOT affect** ServiceMonitor/PodMonitor (they work independently)
 
-#### Verification and Troubleshooting
+---
+
+#### Step 6: Verification and Troubleshooting
 
 ##### Check Metric Collection Status
 
