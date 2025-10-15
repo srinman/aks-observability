@@ -218,6 +218,9 @@ Add complete observability to an existing AKS cluster:
 
 ### Enable Dataplane Logs  
 
+
+#### Log collection with default config/settings
+
 Step 1: Enable Container Insights (logs)
 
 
@@ -272,12 +275,15 @@ kubectl get deployment ama-logs-rs -n kube-system
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-For customization of logs such as filter, etc. use this reference link:   
+#### Log collection with customization, filters, etc. 
+
 https://learn.microsoft.com/en-us/azure/azure-monitor/containers/container-insights-data-collection-filter  
 
 
 
 ### Enable Dataplane Metrics  
+
+#### Metrics collection with default config/settings
 
 
 Step 2: Enable Azure Monitor metrics (Prometheus)  
@@ -339,144 +345,15 @@ kubectl get deployment -n kube-system | grep ama-metrics
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The following targets are enabled by default.
-
-cadvisor
-nodeexporter
-kubelet
-kube-state-metrics
-networkobservabilityRetina
-
-
-cadvisor:   
-container_spec_cpu_period
-container_spec_cpu_quota
-container_cpu_usage_seconds_total
-container_memory_rss
-container_network_receive_bytes_total
-container_network_transmit_bytes_total
-container_network_receive_packets_total
-container_network_transmit_packets_total
-container_network_receive_packets_dropped_total
-container_network_transmit_packets_dropped_total
-container_fs_reads_total
-container_fs_writes_total
-container_fs_reads_bytes_total
-container_fs_writes_bytes_total
-container_memory_working_set_bytes
-container_memory_cache
-container_memory_swap
-container_cpu_cfs_throttled_periods_total
-container_cpu_cfs_periods_total
-kubernetes_build_info
-
-
-nodeexporter:   
-node_cpu_seconds_total
-node_memory_MemAvailable_bytes
-node_memory_Buffers_bytes
-node_memory_Cached_bytes
-node_memory_MemFree_bytes
-node_memory_Slab_bytes
-node_memory_MemTotal_bytes
-node_netstat_Tcp_RetransSegs
-node_netstat_Tcp_OutSegs
-node_netstat_TcpExt_TCPSynRetrans
-node_load1``node_load5
-node_load15
-node_disk_read_bytes_total
-node_disk_written_bytes_total
-node_disk_io_time_seconds_total
-node_filesystem_size_bytes
-node_filesystem_avail_bytes
-node_filesystem_readonly
-node_network_receive_bytes_total
-node_network_transmit_bytes_total
-node_vmstat_pgmajfault
-node_network_receive_drop_total
-node_network_transmit_drop_total
-node_disk_io_time_weighted_seconds_total
-node_exporter_build_info
-node_time_seconds
-node_uname_info 
-
-kubelet:  
-kubelet_volume_stats_used_bytes
-kubelet_node_name
-kubelet_running_pods
-kubelet_running_pod_count
-kubelet_running_containers
-kubelet_running_container_count
-volume_manager_total_volumes
-kubelet_node_config_error
-kubelet_runtime_operations_total
-kubelet_runtime_operations_errors_total
-kubelet_runtime_operations_duration_seconds kubelet_runtime_operations_duration_seconds_bucket kubelet_runtime_operations_duration_seconds_sum kubelet_runtime_operations_duration_seconds_count
-kubelet_pod_start_duration_seconds kubelet_pod_start_duration_seconds_bucket kubelet_pod_start_duration_seconds_sum kubelet_pod_start_duration_seconds_count
-kubelet_pod_worker_duration_seconds kubelet_pod_worker_duration_seconds_bucket kubelet_pod_worker_duration_seconds_sum kubelet_pod_worker_duration_seconds_count
-storage_operation_duration_seconds storage_operation_duration_seconds_bucket storage_operation_duration_seconds_sum storage_operation_duration_seconds_count
-storage_operation_errors_total
-kubelet_cgroup_manager_duration_seconds kubelet_cgroup_manager_duration_seconds_bucket kubelet_cgroup_manager_duration_seconds_sum kubelet_cgroup_manager_duration_seconds_count
-kubelet_pleg_relist_duration_seconds kubelet_pleg_relist_duration_seconds_bucket kubelet_pleg_relist_duration_sum kubelet_pleg_relist_duration_seconds_count
-kubelet_pleg_relist_interval_seconds kubelet_pleg_relist_interval_seconds_bucket kubelet_pleg_relist_interval_seconds_sum kubelet_pleg_relist_interval_seconds_count
-rest_client_requests_total
-rest_client_request_duration_seconds rest_client_request_duration_seconds_bucket rest_client_request_duration_seconds_sum rest_client_request_duration_seconds_count
-process_resident_memory_bytes
-process_cpu_seconds_total
-go_goroutines
-kubelet_volume_stats_capacity_bytes
-kubelet_volume_stats_available_bytes
-kubelet_volume_stats_inodes_used
-kubelet_volume_stats_inodes
-kubernetes_build_info
-
-kube-state-metrics:   
-kube_job_status_succeeded
-kube_job_spec_completions
-kube_daemonset_status_desired_number_scheduled
-kube_daemonset_status_number_ready
-kube_deployment_status_replicas_ready
-kube_pod_container_status_last_terminated_reason
-kube_pod_container_status_waiting_reason
-kube_pod_container_status_restarts_total
-kube_node_status_allocatable
-kube_pod_owner
-kube_pod_container_resource_requests
-kube_pod_status_phase
-kube_pod_container_resource_limits
-kube_replicaset_owner
-kube_resourcequota
-kube_namespace_status_phase
-kube_node_status_capacity
-kube_node_info
-kube_pod_info
-kube_deployment_spec_replicas
-kube_deployment_status_replicas_available
-kube_deployment_status_replicas_updated
-kube_statefulset_status_replicas_ready
-kube_statefulset_status_replicas
-kube_statefulset_status_replicas_updated
-kube_job_status_start_time
-kube_job_status_active
-kube_job_failed
-kube_horizontalpodautoscaler_status_desired_replicas
-kube_horizontalpodautoscaler_status_current_replicas
-kube_horizontalpodautoscaler_spec_min_replicas
-kube_horizontalpodautoscaler_spec_max_replicas
-kubernetes_build_info
-kube_node_status_condition
-kube_node_spec_taint
-kube_pod_container_info
-kube_resource_labels (ex - kube_pod_labels, kube_deployment_labels)
-kube_resource_annotations (ex - kube_pod_annotations, kube_deployment_annotations)
-
-networkobservabilityRetina:  
+[Targets scraped by Default](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-default#targets-scraped-by-default)
 
 
 
-For customization of metrics, refer link:   
-https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-default  
 
+
+#### Metrics collection with custom config/settings  
+
+https://learn.microsoft.com/en-us/azure/azure-monitor/containers/prometheus-metrics-scrape-configuration   
 
 ### Enable Resource Logs  
 
