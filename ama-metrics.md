@@ -1,4 +1,4 @@
-# Azure Monitor Metrics (ama-metrics) - Comprehensive Guide
+# Azure Monitor Metrics (ama-metrics) - Comprehensive Guide  [GENERATED CONTENT - NOT REVIEWED YET]
 
 This guide provides detailed instructions for configuring and customizing Prometheus metrics collection in AKS using Azure Monitor Workspace (AMW) and the ama-metrics agent.
 
